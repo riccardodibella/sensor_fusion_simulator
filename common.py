@@ -22,6 +22,10 @@ VOXEL_STATE_OCCUPIED = 1
 VOXEL_STATE_HIDDEN = 2
 
 PROB_LIDAR_HIT = {1: {ROAD_STATE_EMPTY: 0.02, ROAD_STATE_OCCUPIED: 0.90, ROAD_STATE_UNCLEAR: 0.5}} # first index is sensor type, second index is road state
+SENSOR_ALPHA = {1: 0.9}
+
+MERGE_MODE_COUNT = 1
+MERGE_MODE_ALPHA = 2
 
 def disp_road_matrix(mat, vehicles = None):
 	# https://chatgpt.com/share/67a5ca7b-0c34-8007-beef-bdc41fcd1c19
@@ -44,6 +48,29 @@ def disp_road_matrix(mat, vehicles = None):
 			plt.plot(v.hpos - 0.5, v.vpos - 0.5, 'bo')
 
 	# Show the plot
+	plt.show()
+
+def disp_count_matrix_slice(matrix):
+	plt.imshow(matrix, cmap='viridis', interpolation='nearest')
+	plt.colorbar(label='Value')
+	num_rows, num_cols = matrix.shape
+	plt.gca().set_xticks(np.arange(-0.5, num_cols, 1), minor=True)
+	plt.gca().set_yticks(np.arange(-0.5, num_rows, 1), minor=True)
+	plt.gca().grid(which='minor', color='black', linestyle='-', linewidth=0.5)
+	plt.gca().tick_params(which='minor', length=0)
+	plt.xticks([])
+	plt.yticks([])
+	plt.show()
+
+def disp_prob_matrix(matrix):
+	plt.imshow(matrix, interpolation='nearest')
+	num_rows, num_cols, _ = matrix.shape
+	plt.gca().set_xticks(np.arange(-0.5, num_cols, 1), minor=True)
+	plt.gca().set_yticks(np.arange(-0.5, num_rows, 1), minor=True)
+	plt.gca().grid(which='minor', color='black', linestyle='-', linewidth=0.5)
+	plt.gca().tick_params(which='minor', length=0)
+	plt.xticks([])
+	plt.yticks([])
 	plt.show()
 
 
