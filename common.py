@@ -15,13 +15,20 @@ ROAD_STATE_COLOR_MAP = ListedColormap(["green", "red", "yellow"])
 
 SENSOR_TYPE_DESCR_DICT = {1: "Standard LiDAR"}
 
+DIR_N, DIR_NE, DIR_E, DIR_SE, DIR_S, DIR_SW, DIR_W, DIR_NW = (1, 2, 3, 4, 5, 6, 7, 8)
+
+VOXEL_STATE_EMPTY = 0
+VOXEL_STATE_OCCUPIED = 1
+VOXEL_STATE_HIDDEN = 2
+
+PROB_LIDAR_HIT = {1: {ROAD_STATE_EMPTY: 0.02, ROAD_STATE_OCCUPIED: 0.90, ROAD_STATE_UNCLEAR: 0.5}} # first index is sensor type, second index is road state
+
 def disp_road_matrix(mat, vehicles = None):
 	# https://chatgpt.com/share/67a5ca7b-0c34-8007-beef-bdc41fcd1c19
 	if(type(mat) is not np.ndarray):
 		mat = np.array(mat) # in case it is not already np array
 	plt.imshow(mat, cmap=ROAD_STATE_COLOR_MAP, norm=NoNorm(), interpolation="nearest")
 	
-	# Add grid lines explicitly aligned with cell boundaries
 	num_rows, num_cols = mat.shape
 	plt.gca().set_xticks(np.arange(-0.5, num_cols, 1), minor=True)
 	plt.gca().set_yticks(np.arange(-0.5, num_rows, 1), minor=True)
