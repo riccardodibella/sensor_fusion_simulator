@@ -55,7 +55,8 @@ class Vehicle:
 		return f"Vehicle #{self.index} ({self.vpos}, {self.hpos})"
 
 def load_map(filename):
-	road_map = np.loadtxt("road_01.csv", dtype='i', delimiter=',')
+	# Load matrix from txt https://stackoverflow.com/a/41491301
+	road_map = np.loadtxt(filename, dtype='i', delimiter=',')
 	vehicles = []
 	with open(filename) as f:
 		first_line = f.readline().strip('\n')
