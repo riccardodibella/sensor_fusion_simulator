@@ -9,36 +9,8 @@ def coord_noise():
 	while res == 0:
 		res = np.random.normal(0, 0.1)
 	return res
-def direction_noise():
-	# tiny noise to calculating rays on the border of a cell
-	res = 0
-	while res == 0:
-		res = np.random.normal(0, 0.01)
-	return res
 
 eps = 0.01 # tiny deviation used to enter inside a cell and avoid problems when checking on the border
-
-def calc_direction(deg):
-	angle = deg * 2 * pi / 360
-	v_increase = sin(angle) # positive if going downwards
-	h_increase = cos(angle) # positive if going rightwards
-	if(abs(deg - 0) < 0.05):
-		return DIR_E
-	if(abs(deg - 90) < 0.05):
-		return DIR_N
-	if(abs(deg - 180) < 0.05):
-		return DIR_W
-	if(abs(deg - 270) < 0.05):
-		return DIR_S
-	if(v_increase > 0 and h_increase > 0):
-		return DIR_SE
-	if(v_increase > 0 and h_increase < 0):
-		return DIR_SW
-	if(v_increase < 0 and h_increase < 0):
-		return DIR_NW
-	if(v_increase < 0 and h_increase > 0):
-		return DIR_NE
-	assert(False)
 
 def is_point_inside_veichle(point, vehicle):
 	# point is (ver, hor)
@@ -60,12 +32,11 @@ def generate_count_matrix(m, vehicle):
 	start_coord_hor = vehicle.hpos + coord_noise()
 	start_coord_ver = vehicle.vpos + coord_noise()
 
-	degrs = np.linspace(0,360,360*50)
+	degrs = np.linspace(0,360,360*10)
 	for deg in degrs:
-		direction = calc_direction(deg)
 		angle = deg * 2 * pi / 360
-		v_increase = sin(angle) + direction_noise() # positive if going downwards
-		h_increase = cos(angle) + direction_noise() # positive if going rightwards
+		v_increase = sin(angle) # positive if going downwards
+		h_increase = cos(angle) # positive if going rightwards
 		
 		voxel_list = [] # list of tuples (h, v) to be traversed in order by the ray
 
@@ -84,11 +55,19 @@ def generate_count_matrix(m, vehicle):
 			left_limit = floor(cur_hpos)
 			right_limit = floor(cur_hpos)+1
 
-			t_down = (lower_limit - cur_vpos)/v_increase
-			t_right = (right_limit - cur_hpos)/h_increase
-			t_left = (cur_hpos - left_limit)/(-1*h_increase)
-			t_up = (cur_vpos - upper_limit)/(-1*v_increase)
-
+			if(v_increase != 0):
+				t_down = (lower_limit - cur_vpos)/v_increase
+				t_up = (cur_vpos - upper_limit)/(-1*v_increase)
+			else: 
+				t_down = -1
+				t_up = -1
+			if(h_increase != 0):
+				t_right = (right_limit - cur_hpos)/h_increase
+				t_left = (cur_hpos - left_limit)/(-1*h_increase)
+			else: 
+				t_right = -1
+				t_left = -1
+			
 			t_legal = []
 			if(t_down > 0):
 				t_legal += [t_down]
@@ -102,43 +81,7 @@ def generate_count_matrix(m, vehicle):
 			t = min(t_legal)
 			cur_hpos += h_increase * (t+eps)
 			cur_vpos += v_increase * (t+eps)
-			"""
-			if(direction == DIR_N):
-				cur_vpos = upper_limit - eps
-			elif(direction == DIR_E):
-				cur_hpos = right_limit + eps
-			elif(direction == DIR_S):
-				cur_vpos = lower_limit + eps
-			elif(direction == DIR_W):
-				cur_hpos = left_limit - eps
-			elif(direction == DIR_SE):
-				t_down = (lower_limit - cur_vpos)/v_increase
-				t_right = (right_limit - cur_hpos)/h_increase
-				t = min(t_down, t_right)
-				cur_hpos += h_increase * t + eps
-				cur_vpos += v_increase * t + eps
-			elif(direction == DIR_SW):
-				t_down = (lower_limit - cur_vpos)/v_increase
-				t_left = (cur_hpos - left_limit)/(-1*h_increase)
-				t = min(t_down, t_left)
-				cur_hpos += h_increase * t - eps
-				cur_vpos += v_increase * t + eps
-			elif(direction == DIR_NW):
-				t_up = (cur_vpos - upper_limit)/(-1*v_increase)
-				t_left = (cur_hpos - left_limit)/(-1*h_increase)
-				t = min(t_up, t_left)
-				cur_hpos += h_increase * t - eps
-				cur_vpos += v_increase * t - eps
-			elif(direction == DIR_NE):
-				t_up = (cur_vpos - upper_limit)/(-1*v_increase)
-				t_right = (right_limit - cur_hpos)/h_increase
-				t = min(t_up, t_right)
-				cur_hpos += h_increase * t + eps
-				cur_vpos += v_increase * t - eps
-			else:
-				print(f"Invalid direction {direction}")
-				break
-			"""
+
 		ray_blocked = False
 		for vpos, hpos in voxel_list:
 			if(is_point_inside_veichle((vpos, hpos), vehicle)):

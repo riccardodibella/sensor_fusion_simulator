@@ -22,7 +22,7 @@ VOXEL_STATE_EMPTY = 0
 VOXEL_STATE_OCCUPIED = 1
 VOXEL_STATE_HIDDEN = 2
 
-PROB_LIDAR_HIT = {1: {ROAD_STATE_EMPTY: 0.02, ROAD_STATE_OCCUPIED: 0.90, ROAD_STATE_UNCLEAR: 0.4}} # first index is sensor type, second index is road state
+PROB_LIDAR_HIT = {1: {ROAD_STATE_EMPTY: 0.002, ROAD_STATE_OCCUPIED: 0.8, ROAD_STATE_UNCLEAR: 0.4}} # first index is sensor type, second index is road state
 SENSOR_ALPHA = {1: 0.9}
 
 MERGE_MODE_COUNT = 1
@@ -54,7 +54,6 @@ def disp_road_matrix(mat, vehicles = None, show_grid = True):
 
 def disp_count_matrix_slice(matrix, show_grid = True):
 	plt.imshow(matrix, cmap='viridis', interpolation='nearest')
-	plt.colorbar(label='Value')
 	if show_grid:
 		num_rows, num_cols = matrix.shape
 		plt.gca().set_xticks(np.arange(-0.5, num_cols, 1), minor=True)
@@ -71,10 +70,8 @@ def disp_prob_matrix(matrix, show_grid = True):
 		for c in range(num_cols):
 			for st in range(num_states):
 				if(matrix[r,c,st] < 0):
-					# print((r,c), matrix[r,c])
 					matrix[r,c,st] = 0
 				elif(matrix[r,c,st] > 1):
-					# print((r,c), matrix[r,c])
 					matrix[r,c,st] = 1
 	plt.imshow(matrix, interpolation='nearest')
 	if show_grid:
