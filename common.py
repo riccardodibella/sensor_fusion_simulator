@@ -114,7 +114,7 @@ def load_map(filename):
 	return road_map, vehicles
 
 
-def gen_map(num_vehicles = 20, voxels_per_meter = 4, road_length_m = 100, building_spacing_m = 20, building_unc_border_m = 1):
+def gen_map(voxels_per_meter = 4, num_vehicles = 20, num_side_obstacles = 0, road_length_m = 100, building_spacing_m = 20, building_unc_border_m = 1):
 	dim = road_length_m * voxels_per_meter
 	building_spacing_voxels = building_spacing_m * voxels_per_meter
 	building_unc_border_voxels = building_unc_border_m * voxels_per_meter
@@ -280,5 +280,41 @@ def gen_map(num_vehicles = 20, voxels_per_meter = 4, road_length_m = 100, buildi
 						slot_assign_list[i]
 					)
 				]
+
+	# side obstacles
+	for v in range(dim):
+		for h in range(dim):
+			if 	( \
+					(h >= dim / 2 - building_spacing_voxels / 2 + building_unc_border_voxels and h < (road_length_m/2 - slot_dim_short)*voxels_per_meter) or (( h >= (road_length_m/2 + slot_dim_short)*voxels_per_meter) and (h < dim / 2 + building_spacing_voxels / 2 - building_unc_border_voxels)) \
+					or \
+					(v >= dim / 2 - building_spacing_voxels / 2 + building_unc_border_voxels and v < (road_length_m/2 - slot_dim_short)*voxels_per_meter) or (( v >= (road_length_m/2 + slot_dim_short)*voxels_per_meter) and (v < dim / 2 + building_spacing_voxels / 2 - building_unc_border_voxels)) \
+				) and not ((h >= (road_length_m/2 - slot_dim_short)*voxels_per_meter and h < (road_length_m/2 + slot_dim_short)*voxels_per_meter) or (v >= (road_length_m/2 - slot_dim_short)*voxels_per_meter and v < (road_length_m/2 + slot_dim_short)*voxels_per_meter)):
+				mat[v, h] = -1
+
+	for n in range(num_side_obstacles):
+		width_m = random.randrange(1,5)
+		height_m = random.randrange(1,5)
+		width = width_m*voxels_per_meter
+		height = height_m*voxels_per_meter
+		while True:
+			h_start = random.randrange(dim - width)
+			v_start = random.randrange(dim - height)
+			h_end = h_start + width
+			v_end = v_start + height
+			ok = True
+			for v in range(v_start, v_end):
+				for h in range(h_start, h_end):
+					if mat[v, h] != -1:
+						ok = False
+			if(ok):
+				break
+		for v in range(v_start, v_end):
+			for h in range(h_start, h_end):
+				mat[v, h] = ROAD_STATE_OCCUPIED
+
+	for v in range(dim):
+		for h in range(dim):
+			if mat[v, h] == -1:
+				mat[v, h] = ROAD_STATE_EMPTY
 
 	return mat, vehicles
