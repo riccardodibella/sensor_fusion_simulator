@@ -263,8 +263,8 @@ def gen_map(num_vehicles = 20, voxels_per_meter = 4, road_length_m = 100, buildi
 					Vehicle(
 						start_v + v_offs * voxels_per_meter + padding_short*voxels_per_meter + (vehicle_dim_short*voxels_per_meter)/2, 
 						start_h + h_offs * voxels_per_meter + padding_long*voxels_per_meter + (vehicle_dim_long*voxels_per_meter)/2,
-						vehicle_dim_long*voxels_per_meter,
 						vehicle_dim_short*voxels_per_meter,
+						vehicle_dim_long*voxels_per_meter,
 						1,
 						slot_assign_list[i]
 					)
@@ -277,8 +277,8 @@ def gen_map(num_vehicles = 20, voxels_per_meter = 4, road_length_m = 100, buildi
 					Vehicle(
 						start_v + v_offs * voxels_per_meter + padding_long*voxels_per_meter + (vehicle_dim_long*voxels_per_meter)/2, 
 						start_h + h_offs * voxels_per_meter + padding_short*voxels_per_meter + (vehicle_dim_short*voxels_per_meter)/2,
-						vehicle_dim_short*voxels_per_meter,
 						vehicle_dim_long*voxels_per_meter,
+						vehicle_dim_short*voxels_per_meter,
 						1,
 						slot_assign_list[i]
 					)
