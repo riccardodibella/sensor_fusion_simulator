@@ -27,17 +27,18 @@ SENSOR_ALPHA = {1: 0.9}
 MERGE_MODE_COUNT = 1
 MERGE_MODE_ALPHA = 2
 
-def disp_road_matrix(mat, vehicles = None):
+def disp_road_matrix(mat, vehicles = None, show_grid = True):
 	# https://chatgpt.com/share/67a5ca7b-0c34-8007-beef-bdc41fcd1c19
 	if(type(mat) is not np.ndarray):
 		mat = np.array(mat) # in case it is not already np array
 	plt.imshow(mat, cmap=ROAD_STATE_COLOR_MAP, norm=NoNorm(), interpolation="nearest")
 	
-	num_rows, num_cols = mat.shape
-	plt.gca().set_xticks(np.arange(-0.5, num_cols, 1), minor=True)
-	plt.gca().set_yticks(np.arange(-0.5, num_rows, 1), minor=True)
-	plt.gca().grid(which='minor', color='black', linestyle='-', linewidth=0.5)
-	plt.gca().tick_params(which='minor', length=0)
+	if show_grid:
+		num_rows, num_cols = mat.shape
+		plt.gca().set_xticks(np.arange(-0.5, num_cols, 1), minor=True)
+		plt.gca().set_yticks(np.arange(-0.5, num_rows, 1), minor=True)
+		plt.gca().grid(which='minor', color='black', linestyle='-', linewidth=0.5)
+		plt.gca().tick_params(which='minor', length=0)
 
 	# Hide axes ticks
 	plt.xticks([])
