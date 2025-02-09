@@ -4,6 +4,9 @@ from common import *
 import random
 import matplotlib.pyplot as plt
 
+random.seed(1)
+np.random.seed(2)
+
 NUM_TRIES = 10
 STEP = 4
 
@@ -58,12 +61,11 @@ for t in range(NUM_TRIES):
 		y_arr_avg[n] += y_arr[t][n]
 		y_arr_min_avg[n] += y_arr_min[t][n]
 		y_arr_av_avg[n] += y_arr_av[t][n]
-for t in range(NUM_TRIES):
-	for n in range(len(range(1, len(count_tuple_list)+1, STEP))):
-		x_arr_avg[n] /= NUM_TRIES
-		y_arr_avg[n] /= NUM_TRIES
-		y_arr_min_avg[n] /= NUM_TRIES
-		y_arr_av_avg[n] /= NUM_TRIES
+for n in range(len(range(1, len(count_tuple_list)+1, STEP))):
+	x_arr_avg[n] /= NUM_TRIES
+	y_arr_avg[n] /= NUM_TRIES
+	y_arr_min_avg[n] /= NUM_TRIES
+	y_arr_av_avg[n] /= NUM_TRIES
 
 plt.plot(x_arr_avg, y_arr_avg)
 plt.xlabel("Number of vehicles")
