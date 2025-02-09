@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 road_map, vehicles = gen_map(4, 25, 10, 10)
 
-# disp_road_matrix(road_map, vehicles, False)
+disp_road_matrix(road_map, vehicles, False)
 
 count_tuple_list = []
 for vehicle in vehicles:

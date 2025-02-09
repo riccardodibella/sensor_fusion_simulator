@@ -24,7 +24,8 @@ VOXEL_STATE_EMPTY = 0
 VOXEL_STATE_OCCUPIED = 1
 VOXEL_STATE_HIDDEN = 2
 
-PROB_LIDAR_HIT = {1: {ROAD_STATE_EMPTY: 0.002, ROAD_STATE_OCCUPIED: 0.9, ROAD_STATE_UNCLEAR: 0.4}} # first index is sensor type, second index is road state
+PROB_LIDAR_HIT = {1: {ROAD_STATE_EMPTY: 0, ROAD_STATE_OCCUPIED: 1}}
+# PROB_LIDAR_HIT = {1: {ROAD_STATE_EMPTY: 0.002, ROAD_STATE_OCCUPIED: 0.9, ROAD_STATE_UNCLEAR: 0.4}} # first index is sensor type, second index is road state
 SENSOR_ALPHA = {1: 0.9}
 
 MERGE_MODE_COUNT = 1
@@ -121,6 +122,7 @@ def gen_map(voxels_per_meter = 4, num_vehicles = 20, num_side_obstacles = 0, num
 
 	mat = np.zeros((dim, dim), dtype='i')
 	vehicles = []
+	objects = []
 
 	# buildings
 	for v in range(dim):
@@ -293,8 +295,10 @@ def gen_map(voxels_per_meter = 4, num_vehicles = 20, num_side_obstacles = 0, num
 				mat[v, h] = -1
 
 	for n in range(num_side_obstacles):
-		width_m = random.randrange(1,5)
-		height_m = random.randrange(1,5)
+		# width_m = random.randrange(1,5)
+		# height_m = random.randrange(1,5)
+		width_m = 1
+		height_m = 1
 		width = width_m*voxels_per_meter
 		height = height_m*voxels_per_meter
 		while True:
@@ -309,9 +313,16 @@ def gen_map(voxels_per_meter = 4, num_vehicles = 20, num_side_obstacles = 0, num
 						ok = False
 			if(ok):
 				break
+		new_obj_entry_border = []
+		new_obj_entry_interior = []
 		for v in range(v_start, v_end):
 			for h in range(h_start, h_end):
 				mat[v, h] = ROAD_STATE_OCCUPIED
+				if v == v_start or v == v_end-1 or h == h_start or h == h_end-1:
+					new_obj_entry_border += [(v,h)]
+				else:
+					new_obj_entry_interior += [(v,h)]
+		objects+=[(new_obj_entry_border,new_obj_entry_interior)]
 
 	for v in range(dim):
 		for h in range(dim):
@@ -385,8 +396,10 @@ def gen_map(voxels_per_meter = 4, num_vehicles = 20, num_side_obstacles = 0, num
 						mat[int(start_v + v_offs * voxels_per_meter  + v), int(start_h + h_offs * voxels_per_meter + h)] = -1
 
 	for n in range(num_road_obstacles):
-		width_m = random.randrange(1,5)
-		height_m = random.randrange(1,5)
+		# width_m = random.randrange(1,5)
+		# height_m = random.randrange(1,5)
+		width_m = 1
+		height_m = 1
 		width = width_m*voxels_per_meter
 		height = height_m*voxels_per_meter
 		while True:
@@ -401,16 +414,22 @@ def gen_map(voxels_per_meter = 4, num_vehicles = 20, num_side_obstacles = 0, num
 						ok = False
 			if(ok):
 				break
+		new_obj_entry_border = []
+		new_obj_entry_interior = []
 		for v in range(v_start, v_end):
 			for h in range(h_start, h_end):
 				mat[v, h] = ROAD_STATE_OCCUPIED
-
+				if v == v_start or v == v_end-1 or h == h_start or h == h_end-1:
+					new_obj_entry_border += [(v,h)]
+				else:
+					new_obj_entry_interior += [(v,h)]
+		objects+=[(new_obj_entry_border,new_obj_entry_interior)]
 	for v in range(dim):
 		for h in range(dim):
 			if mat[v, h] == -1:
 				mat[v, h] = ROAD_STATE_EMPTY
 
-	return mat, vehicles
+	return mat, vehicles, objects
 
 def coord_noise():
 	# tiny noise to calculating rays on the border of a cell
@@ -625,3 +644,18 @@ def count_metric(road_matrix, prob_matrix, vehicles, building_spacing_voxels = 2
 	# print(f"{np.sum(np.sum(masked_error_matrix))}/{np.sum(np.sum(mask_matrix))}")
 	
 	return np.sum(np.sum(masked_error_matrix))/np.sum(np.sum(mask_matrix))
+
+def object_metrics(prob_matrix, objects):
+	s = 0
+	worst = 1
+	for ob in objects:
+		border, interior = ob
+		prob = 1
+		for p_i in interior:
+			prob*=prob_matrix[p_i[0],p_i[1],VOXEL_STATE_HIDDEN]
+		for p_b in border:
+			prob*=(prob_matrix[p_i[0],p_i[1],VOXEL_STATE_OCCUPIED] + prob_matrix[p_i[0],p_i[1],VOXEL_STATE_HIDDEN]/2)
+		if(prob < worst):
+			worst = prob
+		s+=prob
+	return worst, s/len(objects)
