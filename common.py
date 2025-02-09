@@ -22,7 +22,7 @@ VOXEL_STATE_EMPTY = 0
 VOXEL_STATE_OCCUPIED = 1
 VOXEL_STATE_HIDDEN = 2
 
-PROB_LIDAR_HIT = {1: {ROAD_STATE_EMPTY: 0.002, ROAD_STATE_OCCUPIED: 0.8, ROAD_STATE_UNCLEAR: 0.4}} # first index is sensor type, second index is road state
+PROB_LIDAR_HIT = {1: {ROAD_STATE_EMPTY: 0.002, ROAD_STATE_OCCUPIED: 0.9, ROAD_STATE_UNCLEAR: 0.4}} # first index is sensor type, second index is road state
 SENSOR_ALPHA = {1: 0.9}
 
 MERGE_MODE_COUNT = 1
@@ -114,7 +114,7 @@ def load_map(filename):
 	return road_map, vehicles
 
 
-def gen_map(voxels_per_meter = 4, num_vehicles = 20, num_side_obstacles = 0, road_length_m = 100, building_spacing_m = 20, building_unc_border_m = 1):
+def gen_map(voxels_per_meter = 4, num_vehicles = 20, num_side_obstacles = 0, road_length_m = 100, building_spacing_m = 20, building_unc_border_m = 0):
 	dim = road_length_m * voxels_per_meter
 	building_spacing_voxels = building_spacing_m * voxels_per_meter
 	building_unc_border_voxels = building_unc_border_m * voxels_per_meter
@@ -282,6 +282,7 @@ def gen_map(voxels_per_meter = 4, num_vehicles = 20, num_side_obstacles = 0, roa
 				]
 
 	# side obstacles
+	voxel_margin = 2
 	for v in range(dim):
 		for h in range(dim):
 			if 	( \
@@ -297,13 +298,13 @@ def gen_map(voxels_per_meter = 4, num_vehicles = 20, num_side_obstacles = 0, roa
 		width = width_m*voxels_per_meter
 		height = height_m*voxels_per_meter
 		while True:
-			h_start = random.randrange(dim - width)
-			v_start = random.randrange(dim - height)
+			h_start = random.randrange(voxel_margin, dim - width - voxel_margin)
+			v_start = random.randrange(voxel_margin, dim - height - voxel_margin)
 			h_end = h_start + width
 			v_end = v_start + height
 			ok = True
-			for v in range(v_start, v_end):
-				for h in range(h_start, h_end):
+			for v in range(v_start-voxel_margin, v_end+voxel_margin):
+				for h in range(h_start-voxel_margin, h_end+voxel_margin):
 					if mat[v, h] != -1:
 						ok = False
 			if(ok):
