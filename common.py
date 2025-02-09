@@ -114,7 +114,7 @@ def load_map(filename):
 	return road_map, vehicles
 
 
-def gen_map(voxels_per_meter = 4, num_vehicles = 20, num_side_obstacles = 0, road_length_m = 100, building_spacing_m = 20, building_unc_border_m = 0):
+def gen_map(voxels_per_meter = 4, num_vehicles = 20, num_side_obstacles = 0, num_road_obstacles = 0, road_length_m = 100, building_spacing_m = 20, building_unc_border_m = 0):
 	dim = road_length_m * voxels_per_meter
 	building_spacing_voxels = building_spacing_m * voxels_per_meter
 	building_unc_border_voxels = building_unc_border_m * voxels_per_meter
@@ -293,6 +293,98 @@ def gen_map(voxels_per_meter = 4, num_vehicles = 20, num_side_obstacles = 0, roa
 				mat[v, h] = -1
 
 	for n in range(num_side_obstacles):
+		width_m = random.randrange(1,5)
+		height_m = random.randrange(1,5)
+		width = width_m*voxels_per_meter
+		height = height_m*voxels_per_meter
+		while True:
+			h_start = random.randrange(voxel_margin, dim - width - voxel_margin)
+			v_start = random.randrange(voxel_margin, dim - height - voxel_margin)
+			h_end = h_start + width
+			v_end = v_start + height
+			ok = True
+			for v in range(v_start-voxel_margin, v_end+voxel_margin):
+				for h in range(h_start-voxel_margin, h_end+voxel_margin):
+					if mat[v, h] != -1:
+						ok = False
+			if(ok):
+				break
+		for v in range(v_start, v_end):
+			for h in range(h_start, h_end):
+				mat[v, h] = ROAD_STATE_OCCUPIED
+
+	for v in range(dim):
+		for h in range(dim):
+			if mat[v, h] == -1:
+				mat[v, h] = ROAD_STATE_EMPTY
+
+	# road obstacles
+	for i in range(len(slot_assign_list)):
+		if slot_assign_list[i] != -1:
+			continue
+		if(i < 2*slots_per_branch):
+			# North branches
+			# if the number is even the vehicle will be on the left, if odd on the right
+			h_offs = -4 if i % 2 == 0 else 0
+
+			v_pos_index = i // 2
+			v_offs = 5 * v_pos_index
+
+			start_v = 0
+			start_h = dim//2
+			for v in range(slot_dim_long*voxels_per_meter):
+				for h in range(slot_dim_short*voxels_per_meter):
+					mat[int(start_v + v_offs * voxels_per_meter + v), int(start_h + h_offs * voxels_per_meter + h)] = -1
+		elif(i < 4*slots_per_branch):
+			# West branches
+			# if the number is even the vehicle will be on the top, if odd on the bottom
+			v_offs = -4 if i % 2 == 0 else 0
+
+			h_pos_index = (i-2*slots_per_branch) // 2
+			h_offs = 5 * h_pos_index
+
+			start_h = 0
+			start_v = dim//2
+			for h in range(slot_dim_long*voxels_per_meter):
+				for v in range(slot_dim_short*voxels_per_meter):
+					mat[int(start_v + v_offs * voxels_per_meter + v), int(start_h + h_offs * voxels_per_meter + h)] = -1
+		elif(i < 6*slots_per_branch):
+			# South branches
+			# if the number is even the vehicle will be on the left, if odd on the right
+			h_offs = -4 if i % 2 == 0 else 0
+
+			v_pos_index = (i-4*slots_per_branch) // 2
+			v_offs = 5 * v_pos_index
+
+			start_v = dim//2 + slot_dim_long*voxels_per_meter
+			start_h = dim//2
+			for v in range(slot_dim_long*voxels_per_meter):
+				for h in range(slot_dim_short*voxels_per_meter):
+					mat[int(start_v + v_offs * voxels_per_meter + v), int(start_h + h_offs * voxels_per_meter + h)] = -1
+		elif(i < 8*slots_per_branch):
+			# East branches
+			# if the number is even the vehicle will be on the top, if odd on the bottom
+			v_offs = -4 if i % 2 == 0 else 0
+
+			h_pos_index = (i-6*slots_per_branch) // 2
+			h_offs = 5 * h_pos_index
+
+			start_h = dim//2 + slot_dim_long*voxels_per_meter
+			start_v = dim//2
+			for h in range(slot_dim_long*voxels_per_meter):
+				for v in range(slot_dim_short*voxels_per_meter):
+					mat[int(start_v + v_offs * voxels_per_meter + v), int(start_h + h_offs * voxels_per_meter + h)] = -1
+		else:
+			start_h = dim//2
+			start_v = dim//2
+			h_offs = -4 if i % 2 == 0 else 0
+			v_offs = -4 if (i // 2) % 2 == 0 else 0
+
+			for v in range(slot_dim_long*voxels_per_meter):
+					for h in range(slot_dim_long*voxels_per_meter):
+						mat[int(start_v + v_offs * voxels_per_meter  + v), int(start_h + h_offs * voxels_per_meter + h)] = -1
+
+	for n in range(num_road_obstacles):
 		width_m = random.randrange(1,5)
 		height_m = random.randrange(1,5)
 		width = width_m*voxels_per_meter
