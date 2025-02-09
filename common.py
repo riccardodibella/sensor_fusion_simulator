@@ -3,6 +3,8 @@ from matplotlib.colors import ListedColormap, NoNorm
 import numpy as np
 import json
 import random
+from math import pi, sin, cos, floor
+
 
 ROAD_STATE_EMPTY = 0
 ROAD_STATE_OCCUPIED = 1
@@ -75,7 +77,6 @@ def disp_prob_matrix(matrix, show_grid = True):
 					matrix[r,c,st] = 1
 	plt.imshow(matrix, interpolation='nearest')
 	if show_grid:
-		
 		plt.gca().set_xticks(np.arange(-0.5, num_cols, 1), minor=True)
 		plt.gca().set_yticks(np.arange(-0.5, num_rows, 1), minor=True)
 		plt.gca().grid(which='minor', color='black', linestyle='-', linewidth=0.5)
@@ -112,7 +113,6 @@ def load_map(filename):
 			vehicles += [Vehicle(list_item["vert"], list_item["horiz"], list_item["height"], list_item["width"], list_item["sensor_type"], index)]
 
 	return road_map, vehicles
-
 
 def gen_map(voxels_per_meter = 4, num_vehicles = 20, num_side_obstacles = 0, num_road_obstacles = 0, road_length_m = 100, building_spacing_m = 20, building_unc_border_m = 0):
 	dim = road_length_m * voxels_per_meter
@@ -411,3 +411,217 @@ def gen_map(voxels_per_meter = 4, num_vehicles = 20, num_side_obstacles = 0, num
 				mat[v, h] = ROAD_STATE_EMPTY
 
 	return mat, vehicles
+
+def coord_noise():
+	# tiny noise to calculating rays on the border of a cell
+	res = 0
+	while res == 0:
+		res = np.random.normal(0, 0.1)
+	return res
+
+eps = 0.01 # tiny deviation used to enter inside a cell and avoid problems when checking on the border
+
+def is_point_inside_vehicle(point, vehicle):
+	# point is (ver, hor)
+	return 	point[0] >= vehicle.vpos-vehicle.h2 and point[0] < vehicle.vpos+vehicle.h2 and point[1] >= vehicle.hpos-vehicle.w2 and point[1] < vehicle.hpos+vehicle.w2
+def is_point_on_vehicle_border(point, vehicle):
+	# point is (ver, hor)
+	return 	(is_point_inside_vehicle(point, vehicle)) and (point[0] == vehicle.vpos-vehicle.h2 or point[0] == vehicle.vpos+vehicle.h2 -1 or point[1] == vehicle.hpos-vehicle.w2 or point[1] == vehicle.hpos+vehicle.w2 -1)
+
+def gen_hit(road_state, sensor_type):
+	prob_hit = PROB_LIDAR_HIT[sensor_type][road_state]
+	return np.random.random_sample() < prob_hit
+
+
+def generate_count_matrix(m, vehicle):
+	map_height, map_width = m.shape
+	result_shape = (map_height, map_width, 3)
+	result = np.zeros(result_shape, dtype='i')
+
+	start_coord_hor = vehicle.hpos + coord_noise()
+	start_coord_ver = vehicle.vpos + coord_noise()
+
+	degrs = np.linspace(0,360,360*10)
+	for deg in degrs:
+		angle = deg * 2 * pi / 360
+		v_increase = sin(angle) # positive if going downwards
+		h_increase = cos(angle) # positive if going rightwards
+		
+		voxel_list = [] # list of tuples (h, v) to be traversed in order by the ray
+
+		cur_hpos = start_coord_hor
+		cur_vpos = start_coord_ver
+		while(True):
+			new_coords = (floor(cur_vpos), floor(cur_hpos))
+			if(new_coords[0] < 0 or new_coords[1] < 0 or new_coords[0] >= map_height or new_coords[1] >= map_width):
+				break
+			voxel_list += [new_coords]
+			
+			# update current position
+			# https://chatgpt.com/share/67a63e35-96bc-8007-8c1d-85598a92b8e3
+			upper_limit = floor(cur_vpos)
+			lower_limit = floor(cur_vpos)+1
+			left_limit = floor(cur_hpos)
+			right_limit = floor(cur_hpos)+1
+
+			if(v_increase != 0):
+				t_down = (lower_limit - cur_vpos)/v_increase
+				t_up = (cur_vpos - upper_limit)/(-1*v_increase)
+			else: 
+				t_down = -1
+				t_up = -1
+			if(h_increase != 0):
+				t_right = (right_limit - cur_hpos)/h_increase
+				t_left = (cur_hpos - left_limit)/(-1*h_increase)
+			else: 
+				t_right = -1
+				t_left = -1
+			
+			t_legal = []
+			if(t_down > 0):
+				t_legal += [t_down]
+			if(t_right > 0):
+				t_legal += [t_right]
+			if(t_left > 0):
+				t_legal += [t_left]
+			if(t_up > 0):
+				t_legal += [t_up]
+
+			t = min(t_legal)
+			cur_hpos += h_increase * (t+eps)
+			cur_vpos += v_increase * (t+eps)
+
+		ray_blocked = False
+		for vpos, hpos in voxel_list:
+			if(is_point_inside_vehicle((vpos, hpos), vehicle)):
+				continue
+			if ray_blocked:
+				result[vpos, hpos, VOXEL_STATE_HIDDEN] += 1
+			else:
+				road_state = m[vpos, hpos]
+				hit = gen_hit(road_state, vehicle.sensor)
+				if hit:
+					result[vpos, hpos, VOXEL_STATE_OCCUPIED] += 1
+					ray_blocked = True
+				else:
+					result[vpos, hpos, VOXEL_STATE_EMPTY] += 1
+	return result
+
+
+def merge_count_matrices(tup_list, vehicles, merge_mode):
+	res_shape = tup_list[0][1].shape
+	result = np.ndarray(res_shape)
+	for ver in range(res_shape[0]):
+		for hor in range(res_shape[1]):
+			v = False
+			b = False
+			for vehicle in vehicles:
+				if(is_point_inside_vehicle((ver,hor), vehicle)):
+					v = True
+					if(is_point_on_vehicle_border((ver,hor), vehicle)):
+						b = True
+			if(v):
+				if(b):
+					# Occupied
+					result[ver, hor, VOXEL_STATE_EMPTY] = 0
+					result[ver, hor, VOXEL_STATE_OCCUPIED] = 1
+					result[ver, hor, VOXEL_STATE_HIDDEN] = 0
+				else:
+					# Hidden
+					result[ver, hor, VOXEL_STATE_EMPTY] = 0
+					result[ver, hor, VOXEL_STATE_OCCUPIED] = 0
+					result[ver, hor, VOXEL_STATE_HIDDEN] = 1
+				continue
+			alphas = []
+			counts = []
+			for tup in tup_list:
+				vehicle = tup[0]
+				mat = tup[1]
+				alphas += [SENSOR_ALPHA[vehicle.sensor]]
+				counts += [mat[ver, hor]]
+			weights = []
+			if(merge_mode == MERGE_MODE_COUNT):
+				tot_count = sum(sum(counts[:]))
+				for c in counts:
+					if tot_count > 0:
+						weights += [sum(c)/tot_count]
+					else:
+						weights += [1/len(counts)]
+			else:
+				print("todo invalid merge mode")
+				exit()
+
+			for state in [VOXEL_STATE_EMPTY, VOXEL_STATE_OCCUPIED, VOXEL_STATE_HIDDEN]:
+				prob = 0
+				for num_vehicle in range(len(alphas)):
+					n = sum(counts[num_vehicle])
+					if n == 0:
+						prob = 1/3
+					else:
+						alpha_n = alphas[num_vehicle]**n
+						prob += weights[num_vehicle] * ((1/3) * alpha_n + (1-alpha_n)*(counts[num_vehicle][state]/n))
+				result[ver, hor, state] = prob
+	return result
+
+def is_point_hidden(mat, v_point, h_point):
+	if(mat[v_point, h_point] != ROAD_STATE_OCCUPIED):
+		return False
+
+	map_height, map_width = mat.shape
+	hidden = True
+	for v in [v_point-1, v_point, v_point+1]:
+		for h in [h_point-1, h_point, h_point+1]:
+			if(v < 0 or h < 0 or v >= map_height or h >= map_width):
+				continue
+			if(mat[v, h] != ROAD_STATE_OCCUPIED):
+				hidden = False
+				break
+	return hidden
+
+def inflate_matrix(mat):
+	height, width = mat.shape
+	res = np.zeros((height, width, 3))
+	for v in range(height):
+		for h in range(width):
+			res[v,h,mat[v,h]]=1
+	return res
+def count_metric(road_matrix, prob_matrix, vehicles, building_spacing_voxels = 20*4):
+	height, width = road_matrix.shape
+	expected_matrix = np.empty(road_matrix.shape, dtype='i')
+	for v in range(height):
+		for h in range(width):
+			if(road_matrix[v,h]==ROAD_STATE_EMPTY):
+				expected_matrix[v,h] = VOXEL_STATE_EMPTY
+			else:
+				expected_matrix[v,h] = VOXEL_STATE_HIDDEN if is_point_hidden(road_matrix, v, h) else VOXEL_STATE_OCCUPIED
+	# disp_prob_matrix(inflate_matrix(expected_matrix), False)
+	obtained_matrix = np.empty(road_matrix.shape, dtype='i')
+	for v in range(height):
+		for h in range(width):
+			obtained_matrix[v,h] = np.argmax(prob_matrix[v,h])
+	# disp_prob_matrix(inflate_matrix(obtained_matrix), False)
+
+	error_matrix = np.empty(road_matrix.shape, dtype='i')
+	for v in range(height):
+		for h in range(width):
+			error_matrix[v,h] = 1 if obtained_matrix[v,h] != expected_matrix[v,h] else 0
+	# disp_road_matrix(error_matrix, None, False)
+
+	# print(np.sum(np.sum(error_matrix)))
+
+	mask_matrix = np.ones(road_matrix.shape, dtype='i')
+	for v in range(height):
+		for h in range(width):
+			for vehicle in vehicles:
+				if(is_point_inside_vehicle((v,h), vehicle)):
+					mask_matrix[v,h] = 0
+	for v in range(height):
+		for h in range(width):
+			if (v < (height / 2 - building_spacing_voxels / 2 - 1) or v >= (height / 2 + building_spacing_voxels / 2 + 1)) and (h < (width / 2 - building_spacing_voxels / 2 - 1) or h >= (width / 2 + building_spacing_voxels / 2 + 1)):
+				mask_matrix[v, h] = 0
+
+	masked_error_matrix = error_matrix*mask_matrix
+	# disp_road_matrix(masked_error_matrix, None, False)
+	# print(f"{np.sum(np.sum(masked_error_matrix))}/{np.sum(np.sum(mask_matrix))}")
+	
+	return np.sum(np.sum(masked_error_matrix))/np.sum(np.sum(mask_matrix))
