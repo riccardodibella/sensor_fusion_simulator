@@ -3,7 +3,7 @@ from matplotlib.colors import ListedColormap, NoNorm
 import numpy as np
 import json
 import random
-from math import pi, sin, cos, floor
+from math import pi, sin, cos, floor, hypot
 
 
 ROAD_STATE_EMPTY = 0
@@ -30,6 +30,11 @@ SENSOR_ALPHA = {1: 0.9}
 
 MERGE_MODE_COUNT = 1
 MERGE_MODE_ALPHA = 2
+
+TRANSMISSION_STRATEGY_RANDOM = 1
+TRANSMISSION_STRATEGY_SPREAD = 2
+TRANSMISSION_STRATEGY_CLOSEST = 3
+TRANSMISSION_STRATEGY_INC_DST = 4
 
 def disp_road_matrix(mat, vehicles = None, show_grid = True):
 	# https://chatgpt.com/share/67a5ca7b-0c34-8007-beef-bdc41fcd1c19
@@ -572,13 +577,16 @@ def merge_count_matrices(tup_list, vehicles, merge_mode):
 
 			for state in [VOXEL_STATE_EMPTY, VOXEL_STATE_OCCUPIED, VOXEL_STATE_HIDDEN]:
 				prob = 0
+				found = False
 				for num_vehicle in range(len(alphas)):
 					n = sum(counts[num_vehicle])
-					if n == 0:
-						prob = 1/3
-					else:
+					if n > 0:
+						found = True
 						alpha_n = alphas[num_vehicle]**n
 						prob += weights[num_vehicle] * ((1/3) * alpha_n + (1-alpha_n)*(counts[num_vehicle][state]/n))
+				if not found:
+					# if the angular resolution is low, some voxels may not be in the trajectory of any ray
+					prob = 1/3
 				result[ver, hor, state] = prob
 	return result
 
@@ -659,3 +667,51 @@ def object_metrics(prob_matrix, objects):
 			worst = prob
 		s+=prob
 	return worst, s/len(objects)
+
+def apply_transmission_strategy(count_tuple_list, num, strategy):
+	if(len(count_tuple_list) == 0):
+		return count_tuple_list
+	if strategy == TRANSMISSION_STRATEGY_RANDOM:
+		perm = np.random.permutation(range(len(count_tuple_list)))
+		filtered_perm = perm[0:num]
+		filtered = []
+		for index in filtered_perm:
+			filtered+=[count_tuple_list[index]]
+		return filtered
+	# sort by random index to avoid bias towards some region in the map
+	count_tuple_list = sorted(count_tuple_list, key=lambda t: t[0].index)
+	if strategy == TRANSMISSION_STRATEGY_CLOSEST:
+		to_return = []
+		for t in count_tuple_list:
+			to_return += [(t[0], np.zeros_like(t[1]))]
+		height, width, _ = count_tuple_list[0][1].shape
+		for v in range(height):
+			for h in range(width):
+				unordered = []
+				i = 0
+				for t in count_tuple_list:
+					unordered += [(hypot(v - t[0].vpos, h - t[0].hpos), i)]
+					i += 1
+				ordered = sorted(unordered, key=lambda p: p[0])
+				for i in range(num):
+					tuple_index = ordered[i][1]
+					to_return[tuple_index][1][v,h] = count_tuple_list[tuple_index][1][v,h]
+		return to_return
+	if strategy == TRANSMISSION_STRATEGY_INC_DST:
+		height, width, _ = count_tuple_list[0][1].shape
+		operating_list = []
+		for t in count_tuple_list:
+			min_dst = hypot(height, width)
+			for v in range(height):
+				for h in range(width):
+					if t[1][v,h,VOXEL_STATE_OCCUPIED]>0:
+						dst = hypot(v - t[0].vpos, h - t[0].hpos)
+						if(dst < min_dst):
+							min_dst = dst
+			operating_list += [(t[0], t[1], min_dst)]
+		operating_list = sorted(operating_list, key=lambda p: p[2])
+		to_return = []
+		for n in range(num):
+			to_return+=[(operating_list[n][0], operating_list[n][1])]
+		return to_return
+	print(f"Invalid transmission strategy {strategy}")
