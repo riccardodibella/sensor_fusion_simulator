@@ -32,9 +32,10 @@ MERGE_MODE_COUNT = 1
 MERGE_MODE_ALPHA = 2
 
 TRANSMISSION_STRATEGY_RANDOM = 1
-TRANSMISSION_STRATEGY_SPREAD = 2
-TRANSMISSION_STRATEGY_CLOSEST = 3
-TRANSMISSION_STRATEGY_INC_DST = 4
+TRANSMISSION_STRATEGY_INC_DST = 2
+TRANSMISSION_STRATEGY_SPREAD = 3
+TRANSMISSION_STRATEGY_CLOSEST = 4
+
 
 def disp_road_matrix(mat, vehicles = None, show_grid = True):
 	# https://chatgpt.com/share/67a5ca7b-0c34-8007-beef-bdc41fcd1c19
@@ -668,6 +669,34 @@ def object_metrics(prob_matrix, objects):
 		s+=prob
 	return worst, s/len(objects)
 
+def calc_max_min_distance(height, width, vehicles):
+	max_possible_distance = hypot(height, width)
+	max_min_distance = 0
+	for v in range(height):
+		for h in range(width):
+			min_distance = max_possible_distance
+			for vehicle in vehicles:
+				dst = hypot(v - vehicle.vpos, h - vehicle.hpos)
+				if(dst < min_distance):
+					min_distance = dst
+			if min_distance > max_min_distance:
+				max_min_distance = min_distance
+	return max_min_distance
+
+def find_furthest_vehicle(vehicles, chosen_vehicles):
+	current_furthest = None
+	current_highest_min_distance = 0
+	for v in vehicles:
+		min_distance = None
+		for v1 in chosen_vehicles:
+			dst = hypot(v.vpos - v1.vpos, v.hpos - v1.hpos)
+			if min_distance == None or dst < min_distance:
+				min_distance = dst
+		if min_distance > current_highest_min_distance:
+			current_highest_min_distance = min_distance
+			current_furthest = v
+	return current_furthest
+
 def apply_transmission_strategy(count_tuple_list, num, strategy):
 	if(len(count_tuple_list) == 0):
 		return count_tuple_list
@@ -677,26 +706,9 @@ def apply_transmission_strategy(count_tuple_list, num, strategy):
 		filtered = []
 		for index in filtered_perm:
 			filtered+=[count_tuple_list[index]]
-		return filtered
+		return filtered		
 	# sort by random index to avoid bias towards some region in the map
 	count_tuple_list = sorted(count_tuple_list, key=lambda t: t[0].index)
-	if strategy == TRANSMISSION_STRATEGY_CLOSEST:
-		to_return = []
-		for t in count_tuple_list:
-			to_return += [(t[0], np.zeros_like(t[1]))]
-		height, width, _ = count_tuple_list[0][1].shape
-		for v in range(height):
-			for h in range(width):
-				unordered = []
-				i = 0
-				for t in count_tuple_list:
-					unordered += [(hypot(v - t[0].vpos, h - t[0].hpos), i)]
-					i += 1
-				ordered = sorted(unordered, key=lambda p: p[0])
-				for i in range(num):
-					tuple_index = ordered[i][1]
-					to_return[tuple_index][1][v,h] = count_tuple_list[tuple_index][1][v,h]
-		return to_return
 	if strategy == TRANSMISSION_STRATEGY_INC_DST:
 		height, width, _ = count_tuple_list[0][1].shape
 		operating_list = []
@@ -714,4 +726,42 @@ def apply_transmission_strategy(count_tuple_list, num, strategy):
 		for n in range(num):
 			to_return+=[(operating_list[n][0], operating_list[n][1])]
 		return to_return
+	if strategy == TRANSMISSION_STRATEGY_SPREAD:
+		height, width, _ = count_tuple_list[0][1].shape
+		candidate_sets = []
+		vehicles = []
+		for t in count_tuple_list:
+			vehicles+=[t[0]]
+		for i in range(len(vehicles)):
+			# take vehicle i as the first point
+			chosen_vehicles = [vehicles[i]]
+			while len(chosen_vehicles) < num:
+				chosen_vehicles += [find_furthest_vehicle(vehicles, chosen_vehicles)]
+			max_min_distance = calc_max_min_distance(height, width, chosen_vehicles)
+			chosen_tuple_sublist = []
+			for t in count_tuple_list:
+				if t[0] in chosen_vehicles:
+					chosen_tuple_sublist += [t]
+			candidate_sets += [(max_min_distance, chosen_tuple_sublist)]
+		odered_sets = sorted(candidate_sets, key=lambda p: p[0])
+		# return the chosen_tuple_sublist for the best candidate
+		return odered_sets[0][1]
+	if strategy == TRANSMISSION_STRATEGY_CLOSEST:
+		to_return = []
+		for t in count_tuple_list:
+			to_return += [(t[0], np.zeros_like(t[1]))]
+		height, width, _ = count_tuple_list[0][1].shape
+		for v in range(height):
+			for h in range(width):
+				unordered = []
+				i = 0
+				for t in count_tuple_list:
+					unordered += [(hypot(v - t[0].vpos, h - t[0].hpos), i)]
+					i += 1
+				ordered = sorted(unordered, key=lambda p: p[0])
+				for i in range(num):
+					tuple_index = ordered[i][1]
+					to_return[tuple_index][1][v,h] = count_tuple_list[tuple_index][1][v,h]
+		return to_return
+	
 	print(f"Invalid transmission strategy {strategy}")
