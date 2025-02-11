@@ -24,9 +24,9 @@ VOXEL_STATE_EMPTY = 0
 VOXEL_STATE_OCCUPIED = 1
 VOXEL_STATE_HIDDEN = 2
 
-PROB_LIDAR_HIT = {1: {ROAD_STATE_EMPTY: 0, ROAD_STATE_OCCUPIED: 1}}
-# PROB_LIDAR_HIT = {1: {ROAD_STATE_EMPTY: 0.002, ROAD_STATE_OCCUPIED: 0.9, ROAD_STATE_UNCLEAR: 0.4}} # first index is sensor type, second index is road state
-SENSOR_ALPHA = {1: 0.9}
+# PROB_LIDAR_HIT = {1: {ROAD_STATE_EMPTY: 0, ROAD_STATE_OCCUPIED: 1}}
+PROB_LIDAR_HIT = {1: {ROAD_STATE_EMPTY: 0.001, ROAD_STATE_OCCUPIED: 0.95, ROAD_STATE_UNCLEAR: 0.4}} # first index is sensor type, second index is road state
+SENSOR_ALPHA = {1: 0.8}
 
 MERGE_MODE_COUNT = 1
 MERGE_MODE_ALPHA = 2
@@ -570,6 +570,26 @@ def merge_count_matrices(tup_list, vehicles, merge_mode):
 				for c in counts:
 					if tot_count > 0:
 						weights += [sum(c)/tot_count]
+					else:
+						weights += [1/len(counts)]
+			elif(merge_mode == MERGE_MODE_ALPHA):
+				tot_count = sum(sum(counts[:]))
+				sum_inv_alpha_n = 0
+				for i in range(len(counts)):
+					c = counts[i]
+					n = sum(c)
+					alpha = alphas[i]
+					alpha_n = alpha ** n
+					inv_alpha_n = n*(1/alpha_n)
+					sum_inv_alpha_n += inv_alpha_n
+				for i in range(len(counts)):
+					c = counts[i]
+					n = sum(c)
+					alpha = alphas[i]
+					alpha_n = alpha ** n
+					inv_alpha_n = n*(1/alpha_n)
+					if tot_count > 0:
+						weights += [inv_alpha_n/sum_inv_alpha_n]
 					else:
 						weights += [1/len(counts)]
 			else:
