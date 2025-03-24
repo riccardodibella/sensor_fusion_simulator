@@ -24,8 +24,8 @@ VOXEL_STATE_EMPTY = 0
 VOXEL_STATE_OCCUPIED = 1
 VOXEL_STATE_HIDDEN = 2
 
-# PROB_LIDAR_HIT = {1: {ROAD_STATE_EMPTY: 0, ROAD_STATE_OCCUPIED: 1}}
-PROB_LIDAR_HIT = {1: {ROAD_STATE_EMPTY: 0.001, ROAD_STATE_OCCUPIED: 0.95, ROAD_STATE_UNCLEAR: 0.4}} # first index is sensor type, second index is road state
+PROB_LIDAR_HIT = {1: {ROAD_STATE_EMPTY: 0, ROAD_STATE_OCCUPIED: 1}}
+# PROB_LIDAR_HIT = {1: {ROAD_STATE_EMPTY: 0.001, ROAD_STATE_OCCUPIED: 0.95, ROAD_STATE_UNCLEAR: 0.4}} # first index is sensor type, second index is road state
 SENSOR_ALPHA = {1: 0.8}
 
 MERGE_MODE_COUNT = 1
@@ -647,13 +647,13 @@ def count_metric(road_matrix, prob_matrix, vehicles, building_spacing_voxels = 2
 	for v in range(height):
 		for h in range(width):
 			obtained_matrix[v,h] = np.argmax(prob_matrix[v,h])
-	# disp_prob_matrix(inflate_matrix(obtained_matrix), False)
+	##disp_prob_matrix(inflate_matrix(obtained_matrix), False)
 
 	error_matrix = np.empty(road_matrix.shape, dtype='i')
 	for v in range(height):
 		for h in range(width):
 			error_matrix[v,h] = 1 if obtained_matrix[v,h] != expected_matrix[v,h] else 0
-	# disp_road_matrix(error_matrix, None, False)
+	##disp_road_matrix(error_matrix, None, False)
 
 	# print(np.sum(np.sum(error_matrix)))
 
