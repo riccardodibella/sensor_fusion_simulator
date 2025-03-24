@@ -27,7 +27,7 @@ VOXEL_STATE_HIDDEN = 2
 
 PROB_LIDAR_HIT = {1: {ROAD_STATE_EMPTY: 0, ROAD_STATE_OCCUPIED: 1}}
 # PROB_LIDAR_HIT = {1: {ROAD_STATE_EMPTY: 0.001, ROAD_STATE_OCCUPIED: 0.95, ROAD_STATE_UNCLEAR: 0.4}} # first index is sensor type, second index is road state
-SENSOR_ALPHA = {1: 0.8}
+SENSOR_ALPHA = {1: 0.8} # Alpha parameter per sensor type
 
 MERGE_MODE_COUNT = 1
 MERGE_MODE_ALPHA = 2
@@ -38,6 +38,37 @@ TRANSMISSION_STRATEGY_SPREAD = 3
 TRANSMISSION_STRATEGY_CLOSEST = 4
 
 
+"""
+Class with all the information for a vehicle on the map.
+- vert and horiz are the two coordinates (integers).
+- height and width are the dimensions of the vehicle, centered around the center point. Since
+a vehicle should correspond to a well-defined set of voxels, height and width must be even integers.
+- The calculated fields h2 and w2 are height and width halved, to avoid needing to calculate them later, since
+we already check here if the numbers are even we can calculate them here.
+- Sensor: in principle this code is able to handle vehicles with sensors that have different "precisions" and 
+a different weight alpha. The type of sensor is identified by a key (integer), that is used to access the 
+dictionaries PROB_LIDAR_HIT and SENSOR_ALPHA
+"""
+class Vehicle:
+	def __init__(self, vert, horiz, height, width, sensor_type, index):
+		self.vpos = int(vert)
+		self.hpos = int(horiz)
+		self.htot = int(height)
+		self.wtot = int(width)
+		assert(height % 2 == 0 and width % 2 == 0)
+		self.h2 = self.htot//2
+		self.w2 = self.wtot//2
+		self.sensor = int(sensor_type)
+		self.index = int(index)
+	def __repr__(self):
+		return f"Vehicle #{self.index} ({self.vpos}, {self.hpos})"
+
+"""
+Shows the road matrix, associating a different color to each state (according to ROAD_STATE_COLOR_MAP). 
+In principle the code is able to handle an "unclear" state that has a probability of propagation in between
+that of the empty and of the occupied states. In practice this is not used for the simulations.
+If the list of vehicles is provided, their indexes are shown on the graph to identify them.
+"""
 def disp_road_matrix(mat, vehicles = None, show_grid = True):
 	# https://chatgpt.com/share/67a5ca7b-0c34-8007-beef-bdc41fcd1c19
 	if(type(mat) is not np.ndarray):
@@ -62,6 +93,10 @@ def disp_road_matrix(mat, vehicles = None, show_grid = True):
 	# Show the plot
 	plt.show()
 
+"""
+Function that displays the distribution of the counts for a single state on the map,
+useful for debugging. It accepts as a parameter a slice of the count matrix.
+"""
 def disp_count_matrix_slice(matrix, show_grid = True):
 	plt.imshow(matrix, cmap='viridis', interpolation='nearest')
 	if show_grid:
@@ -74,6 +109,10 @@ def disp_count_matrix_slice(matrix, show_grid = True):
 	plt.yticks([])
 	plt.show()
 
+"""
+Function that displays the probability matrix for all 3 states at the same time, mapping
+the probability of each state (Empty, Occupied and Hidden) to Red, Green and Blue respectively
+"""
 def disp_prob_matrix(matrix, show_grid = True):
 	num_rows, num_cols, num_states = matrix.shape
 	for r in range(num_rows):
@@ -93,21 +132,9 @@ def disp_prob_matrix(matrix, show_grid = True):
 	plt.yticks([])
 	plt.show()
 
-
-class Vehicle:
-	def __init__(self, vert, horiz, height, width, sensor_type, index):
-		self.vpos = int(vert)
-		self.hpos = int(horiz)
-		self.htot = int(height)
-		self.wtot = int(width)
-		assert(height % 2 == 0 and width % 2 == 0)
-		self.h2 = self.htot//2
-		self.w2 = self.wtot//2
-		self.sensor = int(sensor_type)
-		self.index = int(index)
-	def __repr__(self):
-		return f"Vehicle #{self.index} ({self.vpos}, {self.hpos})"
-
+"""
+Legacy function to load a map from file, no longer used
+"""
 def load_map(filename):
 	# Load matrix from txt https://stackoverflow.com/a/41491301
 	road_map = np.loadtxt(filename, dtype='i', delimiter=',')
@@ -122,6 +149,20 @@ def load_map(filename):
 
 	return road_map, vehicles
 
+"""
+Function for the random generation of a map, including vehicles and obstacles.
+The dimensions of the map, of the road, of the obstacles, of the vehicles etc are given in meters, to avoid needing to change
+all those paramters every time the resolution of the voxel grid is changed. The density of the voxels is tuned with the voxels_per_meter
+parameter. The number of obstacles and vehicles can be changed more or less freely, provided that there must be enough space to place
+them.
+Since the procedure to place the vehicles on the map is weird (the road is divided into slots, but not all the slots have the same
+size/shape, and the vehicles are placed randomly inside the slots, with some margins), use some caution if you change the map size
+parameters.
+
+This is a good example of what happens when you don't follow Kernighan's Law:
+	Everyone knows that debugging is twice as hard as writing a program in the first place. 
+	So if you're as clever as you can be when you write it, how will you ever debug it?
+"""
 def gen_map(voxels_per_meter = 4, num_vehicles = 20, num_side_obstacles = 0, num_road_obstacles = 0, road_length_m = 100, building_spacing_m = 20, building_unc_border_m = 0):
 	dim = road_length_m * voxels_per_meter
 	building_spacing_voxels = building_spacing_m * voxels_per_meter
@@ -438,6 +479,32 @@ def gen_map(voxels_per_meter = 4, num_vehicles = 20, num_side_obstacles = 0, num
 
 	return mat, vehicles, objects
 
+"""
+point is a tuple (ver, hor)
+"""
+def is_point_inside_vehicle(point, vehicle):
+	# point is (ver, hor)
+	return 	point[0] >= vehicle.vpos-vehicle.h2 and point[0] < vehicle.vpos+vehicle.h2 and point[1] >= vehicle.hpos-vehicle.w2 and point[1] < vehicle.hpos+vehicle.w2
+
+"""
+point is a tuple (ver, hor)
+"""
+def is_point_on_vehicle_border(point, vehicle):
+	# point is (ver, hor)
+	return 	(is_point_inside_vehicle(point, vehicle)) and (point[0] == vehicle.vpos-vehicle.h2 or point[0] == vehicle.vpos+vehicle.h2 -1 or point[1] == vehicle.hpos-vehicle.w2 or point[1] == vehicle.hpos+vehicle.w2 -1)
+
+"""
+returns a boolean sample from the Bernoulli distribution defined
+in PROB_LIDAR_HIT for the sensor type and the state of the voxel
+"""
+def gen_hit(road_state, sensor_type):
+	prob_hit = PROB_LIDAR_HIT[sensor_type][road_state]
+	return np.random.random_sample() < prob_hit
+
+"""
+Tiny noise added to the starting coordinate of each ray in order to
+avoid it being aligned to a vertical o horizontal cell border
+"""
 def coord_noise():
 	# tiny noise to calculating rays on the border of a cell
 	res = 0
@@ -447,18 +514,14 @@ def coord_noise():
 
 eps = 0.01 # tiny deviation used to enter inside a cell and avoid problems when checking on the border
 
-def is_point_inside_vehicle(point, vehicle):
-	# point is (ver, hor)
-	return 	point[0] >= vehicle.vpos-vehicle.h2 and point[0] < vehicle.vpos+vehicle.h2 and point[1] >= vehicle.hpos-vehicle.w2 and point[1] < vehicle.hpos+vehicle.w2
-def is_point_on_vehicle_border(point, vehicle):
-	# point is (ver, hor)
-	return 	(is_point_inside_vehicle(point, vehicle)) and (point[0] == vehicle.vpos-vehicle.h2 or point[0] == vehicle.vpos+vehicle.h2 -1 or point[1] == vehicle.hpos-vehicle.w2 or point[1] == vehicle.hpos+vehicle.w2 -1)
 
-def gen_hit(road_state, sensor_type):
-	prob_hit = PROB_LIDAR_HIT[sensor_type][road_state]
-	return np.random.random_sample() < prob_hit
-
-
+"""
+Given the road matrix and a vehicle, this function returns the count matrix
+measured with LiDAR by that vehicle. The angular resolution of the LiDAR is 10 rays
+per degree (3600 rays in total).
+The returned count matrix has shape (rows, columns, 3), where the third coordinate 
+refers to the state (Occupied, Empty or Hidden)
+"""
 def generate_count_matrix(m, vehicle):
 	map_height, map_width = m.shape
 	result_shape = (map_height, map_width, 3)
@@ -534,6 +597,13 @@ def generate_count_matrix(m, vehicle):
 	return result
 
 
+"""
+For each voxel, the count matrices from the different vehicles
+are merged using the specified merge mode.
+The information about the vehicles is needed to place them on the map
+without any ambiguity, because we work under the assumption of having
+perfect knowledge of their position
+"""
 def merge_count_matrices(tup_list, vehicles, merge_mode):
 	res_shape = tup_list[0][1].shape
 	result = np.ndarray(res_shape)
@@ -594,7 +664,7 @@ def merge_count_matrices(tup_list, vehicles, merge_mode):
 					else:
 						weights += [1/len(counts)]
 			else:
-				print("todo invalid merge mode")
+				print("Invalid merge mode")
 				exit()
 
 			for state in [VOXEL_STATE_EMPTY, VOXEL_STATE_OCCUPIED, VOXEL_STATE_HIDDEN]:
@@ -612,6 +682,24 @@ def merge_count_matrices(tup_list, vehicles, merge_mode):
 				result[ver, hor, state] = prob
 	return result
 
+"""
+This function receives a 2D matrix containing the states of the voxels,
+and expands into a 3D matrix of values between 0 and 1 (in this case
+exactly 0 or 1) that can be displayed with disp_prob_matrix
+"""
+def inflate_matrix(mat):
+	height, width = mat.shape
+	res = np.zeros((height, width, 3))
+	for v in range(height):
+		for h in range(width):
+			res[v,h,mat[v,h]]=1
+	return res
+
+"""
+Retuns True if in all 4 direction from the coordinates of the point there is another Occupied cell or
+the border of the map. In other words, this function returns True if, even under perfect visibility
+conditions, the point will still always be classified as Hidden
+"""
 def is_point_hidden(mat, v_point, h_point):
 	if(mat[v_point, h_point] != ROAD_STATE_OCCUPIED):
 		return False
@@ -627,13 +715,12 @@ def is_point_hidden(mat, v_point, h_point):
 				break
 	return hidden
 
-def inflate_matrix(mat):
-	height, width = mat.shape
-	res = np.zeros((height, width, 3))
-	for v in range(height):
-		for h in range(width):
-			res[v,h,mat[v,h]]=1
-	return res
+"""
+Calculates the count metric, by counting the states that have a wrong classification when assigning
+them the state with the highest estimated probability. 
+The count is divided by the number of "useful" voxels considered for this metric. This number excludes
+voxels inside buildings and vehicles, that are always classified correctly
+"""
 def count_metric(road_matrix, prob_matrix, vehicles, building_spacing_voxels = 20*4):
 	height, width = road_matrix.shape
 	expected_matrix = np.empty(road_matrix.shape, dtype='i')
@@ -675,6 +762,10 @@ def count_metric(road_matrix, prob_matrix, vehicles, building_spacing_voxels = 2
 	
 	return np.sum(np.sum(masked_error_matrix))/np.sum(np.sum(mask_matrix))
 
+"""
+Computes the object metric presented in the reference paper, returning the worse value
+and the average value among all the objects present in the scene, in a tuple (worse, avg)
+"""
 def object_metrics(prob_matrix, objects):
 	s = 0
 	worst = 1
@@ -690,6 +781,11 @@ def object_metrics(prob_matrix, objects):
 		s+=prob
 	return worst, s/len(objects)
 
+"""
+Utility function for the Spread strategy: given a list of chosen vehicles and the dimensions (in number of voxels)
+of the intersection, calculates the maximum distance from a voxel on the map and its nearest vehicle among the ones
+in the chosen vehicles list
+"""
 def calc_max_min_distance(height, width, vehicles):
 	max_possible_distance = hypot(height, width)
 	max_min_distance = 0
@@ -704,6 +800,10 @@ def calc_max_min_distance(height, width, vehicles):
 				max_min_distance = min_distance
 	return max_min_distance
 
+"""
+Utility function for the Spread strategy: finds the veichle in vehicles that has
+maximizes the minimum distance to all the already chosen vehicles
+"""
 def find_furthest_vehicle(vehicles, chosen_vehicles):
 	current_furthest = None
 	current_highest_min_distance = 0
@@ -718,6 +818,15 @@ def find_furthest_vehicle(vehicles, chosen_vehicles):
 			current_furthest = v
 	return current_furthest
 
+"""
+Function that applies a specific strategy (identified by its number) to the input count_tuple_list, until the
+channel capacity "num" (number of vehicles) is saturated.
+This function returns a list with the same type of structure of the input count_tuple_list. For all the strategies
+apart from "Closest", the returned list will have num entries, corresponding to the num selected vehicles. For the
+"Closest" strategy there shape of the output list is the same as that of the input one, and all the count values
+for each voxel are set to 0 in the returned list, except for the counts of the vehicles in charge of the transmission
+of that voxel 
+"""
 def apply_transmission_strategy(count_tuple_list, num, strategy):
 	if(len(count_tuple_list) == 0):
 		return count_tuple_list
