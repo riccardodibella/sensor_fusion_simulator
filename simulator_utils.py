@@ -4,7 +4,12 @@ from matplotlib.colors import ListedColormap, NoNorm
 import numpy as np
 import json
 import random
-from math import pi, sin, cos, floor, hypot
+from math import pi, sin, cos, floor, hypot, atan2
+import open3d as o3d
+from nuscenes.nuscenes import NuScenes
+from nuscenes.utils.data_classes import LidarPointCloud
+import os
+
 
 
 ROAD_STATE_EMPTY = 0
@@ -895,3 +900,136 @@ def apply_transmission_strategy(count_tuple_list, num, strategy):
 		return to_return
 	
 	print(f"Invalid transmission strategy {strategy}")
+
+
+
+"""
+Returns a tuple (array of BEV coordinates [X,Y], array of 3D coordinates [X,Y;Z]) for the points above z_threshold meters
+from the position of the LiDAR sensor
+Ego vehicle is at coordinates [0,0]
+"""
+def nuscenes_load_bev_points(nuscenes_dir="v1.0-mini", scene_index = 0, z_threshold = -1):
+	nusc = NuScenes(version='v1.0-mini', dataroot=nuscenes_dir, verbose=False)
+	sample = nusc.sample[scene_index]
+	lidar_token = sample['data']['LIDAR_TOP']
+	lidar_data = nusc.get('sample_data', lidar_token)
+
+	lidar_path = os.path.join(nuscenes_dir, lidar_data['filename'])
+	pc = LidarPointCloud.from_file(lidar_path)
+
+	# Prepare Open3D point cloud
+	points = pc.points[:3, :].T
+	# Apply simple Z filter
+	z_threshold = -1.1
+	filtered_points = points[points[:, 2] > z_threshold]
+	# Keep only X and Y coordinates for the BEV
+	bev_points = filtered_points[:, :2]  # Take only X and Y columns
+
+	#print(f"Total points: {points.shape[0]}")
+	#print(f"Filtered points: {filtered_points.shape[0]}")
+
+	return bev_points, filtered_points
+
+def scatter_bev(bev_points):
+	plt_fig = plt.figure(figsize=(10, 10))
+	plt.scatter(bev_points[:, 0], bev_points[:, 1], s=0.5)
+	plt.scatter(0, 0, color='red', s=2, marker='o', label='Car Position (LiDAR)')
+	plt.title('BEV scatter plot')
+	plt.xlabel('X (meters)')
+	plt.ylabel('Y (meters)')
+	plt.axis('equal')
+	plt.grid(True)
+	plt.show()
+
+def scatter_3d(points):
+	pcd = o3d.geometry.PointCloud()
+	pcd.points = o3d.utility.Vector3dVector(points)
+	axis = o3d.geometry.TriangleMesh.create_coordinate_frame(size=5.0)
+	o3d.visualization.draw_geometries([pcd, axis], window_name="LiDAR point cloud")
+
+def is_point_inside_voxel(point_v_pos_m, point_h_pos_m, voxels_per_meter, voxel_vpos, voxel_hpos):
+	return voxel_vpos == floor(point_v_pos_m*voxels_per_meter) and voxel_hpos == floor(point_h_pos_m*voxels_per_meter)
+
+def generate_count_matrix_bev_points(bev_points, car_coords_m, vehicle_radius_m, map_dimensions_m, voxels_per_meter):
+	car_x_m, car_y_m = car_coords_m
+	map_height, map_width = map_dimensions_m
+	map_height_voxels = map_height*voxels_per_meter
+	map_width_voxels = map_width*voxels_per_meter
+	result_shape = (map_height_voxels, map_width_voxels, 3)
+	result = np.zeros(result_shape, dtype='i')
+	start_coord_hor = (car_x_m+map_width/2)*voxels_per_meter + coord_noise()
+	start_coord_ver = (car_y_m+map_height/2)*voxels_per_meter + coord_noise()
+	#print(f"start coords {(start_coord_hor, start_coord_ver)}")
+
+	for point in bev_points:
+		#print(f"point {point} in bev_points")
+		x, y = point
+		if(abs(x) >= (map_width) or abs(y) >= (map_height)):
+			continue
+		angle = atan2(y, x)
+		#print(f"angle {angle/(pi)*180} deg")
+		v_increase = sin(-angle) # positive if going downwards
+		h_increase = cos(angle) # positive if going rightwards
+		#print(f"v_increase {v_increase} h_increase {h_increase}")
+		
+		voxel_list = [] # list of tuples (h, v) to be traversed in order by the ray
+
+		cur_hpos = start_coord_hor
+		cur_vpos = start_coord_ver
+		while(True):
+			new_coords = (floor(cur_vpos), floor(cur_hpos))
+			#print(f"coords {new_coords} cur_vpos {cur_vpos} cur_hpos {cur_hpos}")
+			if(new_coords[0] < 0 or new_coords[1] < 0 or new_coords[0] >= map_height_voxels or new_coords[1] >= map_width_voxels):
+				break
+			voxel_list += [new_coords]
+			
+			# update current position
+			# https://chatgpt.com/share/67a63e35-96bc-8007-8c1d-85598a92b8e3
+			upper_limit = floor(cur_vpos)
+			lower_limit = floor(cur_vpos)+1
+			left_limit = floor(cur_hpos)
+			right_limit = floor(cur_hpos)+1
+
+			if(v_increase != 0):
+				t_down = (lower_limit - cur_vpos)/v_increase
+				t_up = (cur_vpos - upper_limit)/(-1*v_increase)
+			else: 
+				t_down = -1
+				t_up = -1
+			if(h_increase != 0):
+				t_right = (right_limit - cur_hpos)/h_increase
+				t_left = (cur_hpos - left_limit)/(-1*h_increase)
+			else: 
+				t_right = -1
+				t_left = -1
+			#print(f"t_down {t_down} t_up {t_up} t_right {t_right} t_left {t_left}")
+			
+			t_legal = []
+			if(t_down > 0):
+				t_legal += [t_down]
+			if(t_right > 0):
+				t_legal += [t_right]
+			if(t_left > 0):
+				t_legal += [t_left]
+			if(t_up > 0):
+				t_legal += [t_up]
+
+			t = min(t_legal)
+			cur_hpos += h_increase * (t+eps)
+			cur_vpos += v_increase * (t+eps)
+
+		ray_blocked = False
+		for vpos, hpos in voxel_list:
+			if(hypot(vpos-start_coord_ver, hpos-start_coord_hor)<vehicle_radius_m*voxels_per_meter):
+				continue
+			if ray_blocked:
+				result[vpos, hpos, VOXEL_STATE_HIDDEN] += 1
+			else:
+				#road_state = m[vpos, hpos]
+				hit = is_point_inside_voxel(y+map_height/2, x+map_height/2, voxels_per_meter, vpos, hpos)
+				if hit:
+					result[vpos, hpos, VOXEL_STATE_OCCUPIED] += 1
+					ray_blocked = True
+				else:
+					result[vpos, hpos, VOXEL_STATE_EMPTY] += 1
+	return result
