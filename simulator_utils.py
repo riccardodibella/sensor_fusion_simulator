@@ -4,7 +4,7 @@ from matplotlib.colors import ListedColormap, NoNorm
 import numpy as np
 import json
 import random
-from math import pi, sin, cos, floor, hypot, atan2
+from math import pi, sin, cos, floor, ceil, hypot, atan2
 import open3d as o3d
 from nuscenes.nuscenes import NuScenes
 from nuscenes.utils.data_classes import LidarPointCloud
@@ -641,6 +641,7 @@ def merge_count_matrices(tup_list, vehicles, merge_mode):
 				alphas += [SENSOR_ALPHA[vehicle.sensor]]
 				counts += [mat[ver, hor]]
 			weights = []
+
 			if(merge_mode == MERGE_MODE_COUNT):
 				tot_count = sum(sum(counts[:]))
 				for c in counts:
@@ -672,19 +673,22 @@ def merge_count_matrices(tup_list, vehicles, merge_mode):
 				print("Invalid merge mode")
 				exit()
 
+			found = False
 			for state in [VOXEL_STATE_EMPTY, VOXEL_STATE_OCCUPIED, VOXEL_STATE_HIDDEN]:
 				prob = 0
-				found = False
 				for num_vehicle in range(len(alphas)):
 					n = sum(counts[num_vehicle])
 					if n > 0:
 						found = True
 						alpha_n = alphas[num_vehicle]**n
 						prob += weights[num_vehicle] * ((1/3) * alpha_n + (1-alpha_n)*(counts[num_vehicle][state]/n))
-				if not found:
-					# if the angular resolution is low, some voxels may not be in the trajectory of any ray
-					prob = 1/3
 				result[ver, hor, state] = prob
+			if not found:
+				# if the angular resolution is low, some voxels may not be in the trajectory of any ray
+				result[ver, hor, VOXEL_STATE_EMPTY] = 1
+				result[ver, hor, VOXEL_STATE_OCCUPIED] = 0
+				result[ver, hor, VOXEL_STATE_HIDDEN] = 0
+				
 	return result
 
 """
@@ -920,7 +924,6 @@ def nuscenes_load_bev_points(nuscenes_dir="v1.0-mini", scene_index = 0, z_thresh
 	# Prepare Open3D point cloud
 	points = pc.points[:3, :].T
 	# Apply simple Z filter
-	z_threshold = -1.1
 	filtered_points = points[points[:, 2] > z_threshold]
 	# Keep only X and Y coordinates for the BEV
 	bev_points = filtered_points[:, :2]  # Take only X and Y columns
@@ -930,8 +933,8 @@ def nuscenes_load_bev_points(nuscenes_dir="v1.0-mini", scene_index = 0, z_thresh
 
 	return bev_points, filtered_points
 
-def scatter_bev(bev_points):
-	plt_fig = plt.figure(figsize=(10, 10))
+def scatter_bev(bev_points, dimensions):
+	plt.figure(figsize=(6, 6))
 	plt.scatter(bev_points[:, 0], bev_points[:, 1], s=0.5)
 	plt.scatter(0, 0, color='red', s=2, marker='o', label='Car Position (LiDAR)')
 	plt.title('BEV scatter plot')
@@ -939,6 +942,9 @@ def scatter_bev(bev_points):
 	plt.ylabel('Y (meters)')
 	plt.axis('equal')
 	plt.grid(True)
+	plt.xlim(-dimensions[0]/2, dimensions[0]/2)
+	plt.ylim(-dimensions[1]/2, dimensions[1]/2)
+	plt.tight_layout() 
 	plt.show()
 
 def scatter_3d(points):
@@ -953,8 +959,8 @@ def is_point_inside_voxel(point_v_pos_m, point_h_pos_m, voxels_per_meter, voxel_
 def generate_count_matrix_bev_points(bev_points, car_coords_m, vehicle_radius_m, map_dimensions_m, voxels_per_meter):
 	car_x_m, car_y_m = car_coords_m
 	map_height, map_width = map_dimensions_m
-	map_height_voxels = map_height*voxels_per_meter
-	map_width_voxels = map_width*voxels_per_meter
+	map_height_voxels = int(map_height*voxels_per_meter)
+	map_width_voxels = int(map_width*voxels_per_meter)
 	result_shape = (map_height_voxels, map_width_voxels, 3)
 	result = np.zeros(result_shape, dtype='i')
 	start_coord_hor = (car_x_m+map_width/2)*voxels_per_meter + coord_noise()
@@ -962,12 +968,14 @@ def generate_count_matrix_bev_points(bev_points, car_coords_m, vehicle_radius_m,
 	#print(f"start coords {(start_coord_hor, start_coord_ver)}")
 
 	for point in bev_points:
-		#print(f"point {point} in bev_points")
 		x, y = point
 		if(abs(x) >= (map_width) or abs(y) >= (map_height)):
 			continue
+		if(hypot(x-car_x_m, y-car_y_m)<vehicle_radius_m):
+			continue
 		angle = atan2(y, x)
-		#print(f"angle {angle/(pi)*180} deg")
+		#angle_deg = angle/(pi)*180
+
 		v_increase = sin(-angle) # positive if going downwards
 		h_increase = cos(angle) # positive if going rightwards
 		#print(f"v_increase {v_increase} h_increase {h_increase}")
@@ -1026,10 +1034,11 @@ def generate_count_matrix_bev_points(bev_points, car_coords_m, vehicle_radius_m,
 				result[vpos, hpos, VOXEL_STATE_HIDDEN] += 1
 			else:
 				#road_state = m[vpos, hpos]
-				hit = is_point_inside_voxel(y+map_height/2, x+map_height/2, voxels_per_meter, vpos, hpos)
+				hit = is_point_inside_voxel(-y+map_height/2, x+map_height/2, voxels_per_meter, vpos, hpos)
 				if hit:
 					result[vpos, hpos, VOXEL_STATE_OCCUPIED] += 1
 					ray_blocked = True
 				else:
 					result[vpos, hpos, VOXEL_STATE_EMPTY] += 1
+		#break
 	return result
